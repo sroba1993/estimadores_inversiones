@@ -14,6 +14,8 @@ TIMEFRAME_OPTIONS = {
     "15m": {"label": "15m", "period": "60d", "interval": "15m"},
     "1h": {"label": "1h", "period": "90d", "interval": "60m"},
     "1d": {"label": "1d", "period": "1y", "interval": "1d"},
+    "1wk": {"label": "1S", "period": "2y", "interval": "1wk"},
+    "1mo": {"label": "1M", "period": "5y", "interval": "1mo"},
 }
 
 TIMEFRAME_KEYS = list(TIMEFRAME_OPTIONS.keys())
@@ -432,29 +434,71 @@ def formatear_porcentaje(valor):
         return str(valor or "N/A")
 
 
-def construir_texto_informacion(datos):
-    if not datos:
-        return "No se encontraron datos para el ticker seleccionado."
+def generar_tabla_resumen(data_items):
+    if not data_items:
+        return dbc.Alert("No hay datos disponibles", color="warning")
+    
+    # Estilos base (igual que generar_tabla_financiera)
+    header_style = {
+        "color": "#94a3b8",
+        "fontWeight": "normal",
+        "borderBottom": "1px solid #334155",
+        "padding": "8px 4px",
+        "fontSize": "0.8rem",
+        "backgroundColor": "transparent"
+    }
+    
+    cell_style = {
+        "color": "#e2e8f0",
+        "padding": "8px 4px",
+        "borderBottom": "1px solid #1e293b",
+        "fontSize": "0.8rem",
+        "backgroundColor": "transparent"
+    }
 
-    lines = [
-        f"Ticker: {datos['ticker']}",
-        f"Nombre: {datos['short_name'] or 'N/A'}",
-        f"Sector: {datos['sector'] or 'N/A'}",
-        f"Precio actual: {formatear_moneda(datos.get('precio_actual'))}",
-        f"EPS trailing: {datos.get('trailing_eps'):.2f}" if datos.get("trailing_eps") else "EPS trailing: N/A",
-        f"EPS forward: {datos.get('forward_eps'):.2f}" if datos.get("forward_eps") else "EPS forward: N/A",
-        f"Trailing P/E: {datos.get('trailing_pe'):.2f}" if datos.get("trailing_pe") else "Trailing P/E: N/A",
-        f"Forward P/E: {datos.get('forward_pe'):.2f}" if datos.get("forward_pe") else "Forward P/E: N/A",
-        f"Dividendo anual: {formatear_moneda(datos.get('dividendo_anual'))}",
-        f"Dividend yield (último año): {formatear_porcentaje(datos.get('dividend_yield'))}",
-        f"Avg Div Yield 5 años: {formatear_porcentaje(datos.get('five_year_avg_div_yield'))}",
-        f"Valor en libros: {formatear_moneda(datos.get('book_value'))}",
+    header = [
+        html.Th("METRIC", style={**header_style, "textAlign": "left"}),
+        html.Th("VALUE", style={**header_style, "textAlign": "right"})
     ]
 
-    return "\n".join(lines)
+    rows = []
+    for label, value in data_items:
+        label_cell = html.Td(label, style={**cell_style, "textAlign": "left", "fontWeight": "500", "color": "#f8fafc"})
+        value_cell = html.Td(str(value), style={**cell_style, "textAlign": "right"})
+        rows.append(html.Tr([label_cell, value_cell]))
+
+    return dbc.Table(
+        [html.Thead(html.Tr(header)), html.Tbody(rows)],
+        hover=True,
+        responsive=True,
+        className="table-borderless table-sm mb-0",
+        style={"backgroundColor": "#0f172a", "color": "#e2e8f0"}
+    )
 
 
-def construir_texto_valoracion(datos, r, g):
+def construir_componente_informacion(datos):
+    if not datos:
+        return dbc.Alert("No se encontraron datos para el ticker seleccionado.", color="warning")
+
+    items = [
+        ("Ticker", datos['ticker']),
+        ("Nombre", datos['short_name'] or 'N/A'),
+        ("Sector", datos['sector'] or 'N/A'),
+        ("Precio actual", formatear_moneda(datos.get('precio_actual'))),
+        ("EPS trailing", f"{datos.get('trailing_eps'):.2f}" if datos.get("trailing_eps") else "N/A"),
+        ("EPS forward", f"{datos.get('forward_eps'):.2f}" if datos.get("forward_eps") else "N/A"),
+        ("Trailing P/E", f"{datos.get('trailing_pe'):.2f}" if datos.get("trailing_pe") else "N/A"),
+        ("Forward P/E", f"{datos.get('forward_pe'):.2f}" if datos.get("forward_pe") else "N/A"),
+        ("Dividendo anual", formatear_moneda(datos.get('dividendo_anual'))),
+        ("Dividend yield (último año)", formatear_porcentaje(datos.get('dividend_yield'))),
+        ("Avg Div Yield 5 años", formatear_porcentaje(datos.get('five_year_avg_div_yield'))),
+        ("Valor en libros", formatear_moneda(datos.get('book_value'))),
+    ]
+
+    return generar_tabla_resumen(items)
+
+
+def construir_componente_valoracion(datos, r, g):
     pe_justo = estimar_pe_justo(datos)
     eps_usado = datos.get("forward_eps") or datos.get("trailing_eps")
     fv_pe = valor_justo_por_pe(eps_usado, pe_justo) if eps_usado else None
@@ -466,20 +510,92 @@ def construir_texto_valoracion(datos, r, g):
     fair_values = [v for v in [fv_pe, fv_div, fv_book] if v]
     fv_promedio = sum(fair_values) / len(fair_values) if fair_values else None
 
-    lines = [
-        f"Precio actual: {formatear_moneda(datos.get('precio_actual'))}",
-        f"P/E 'justo' estimado: {pe_justo:.2f}",
-        f"Valor justo por P/E: {formatear_moneda(fv_pe) if fv_pe else 'N/A'}",
-        f"Valor justo por Dividendos (r={r}, g={g}): {formatear_moneda(fv_div) if fv_div else 'N/A'}",
-        f"Valor justo por valor en libros: {formatear_moneda(fv_book) if fv_book else 'N/A'}",
-        f"Valor justo promedio: {formatear_moneda(fv_promedio) if fv_promedio else 'N/A'}",
+    items = [
+        ("Precio actual", formatear_moneda(datos.get('precio_actual'))),
+        ("P/E 'justo' estimado", f"{pe_justo:.2f}"),
+        ("Valor justo por P/E", formatear_moneda(fv_pe) if fv_pe else 'N/A'),
+        (f"Valor justo por Dividendos (r={r}, g={g})", formatear_moneda(fv_div) if fv_div else 'N/A'),
+        ("Valor justo por valor en libros", formatear_moneda(fv_book) if fv_book else 'N/A'),
+        ("Valor justo promedio", formatear_moneda(fv_promedio) if fv_promedio else 'N/A'),
     ]
 
     if fv_promedio and datos.get("precio_actual"):
         upside = (fv_promedio / datos["precio_actual"] - 1) * 100
-        lines.append(f"Upside/Downside estimado: {upside:+.2f}%")
+        items.append(("Upside/Downside estimado", f"{upside:+.2f}%"))
 
-    return "\n".join(lines)
+    return generar_tabla_resumen(items)
+
+
+def construir_detalle_valoracion(datos, r, g):
+    pe_justo = estimar_pe_justo(datos)
+    eps_usado = datos.get("forward_eps") or datos.get("trailing_eps")
+    fv_pe = valor_justo_por_pe(eps_usado, pe_justo) if eps_usado else None
+    
+    div_anual = datos.get("dividendo_anual")
+    fv_div = valor_justo_dividendos(div_anual, r, g)
+    
+    book_val = datos.get("book_value")
+    fv_book = book_val * 1.2 if book_val else None
+
+    # --- Detalle P/E ---
+    pe_items = []
+    if eps_usado:
+        tipo_eps = "Forward" if datos.get("forward_eps") else "Trailing"
+        pe_items.append((f"EPS ({tipo_eps})", f"${eps_usado:.2f}"))
+        pe_items.append(("P/E Justo Estimado", f"{pe_justo:.2f}"))
+        pe_items.append(("Valor Justo (EPS x P/E)", formatear_moneda(fv_pe)))
+    else:
+        pe_items.append(("Estado", "Sin datos de EPS"))
+
+    # --- Detalle Dividendos ---
+    div_items = []
+    if div_anual:
+        div_items.append(("Dividendo Anual (D0)", formatear_moneda(div_anual)))
+        div_items.append(("Tasa Descuento (r)", f"{r:.1%}"))
+        div_items.append(("Tasa Crecimiento (g)", f"{g:.1%}"))
+        if r > g:
+            div_items.append(("Valor Justo (Gordon)", formatear_moneda(fv_div)))
+        else:
+            div_items.append(("Estado", "No aplica (r <= g)"))
+    else:
+        div_items.append(("Estado", "No paga dividendos"))
+
+    # --- Detalle Book Value ---
+    bv_items = []
+    if book_val:
+        bv_items.append(("Valor en Libros", formatear_moneda(book_val)))
+        bv_items.append(("Multiplo", "1.2x"))
+        bv_items.append(("Valor Justo", formatear_moneda(fv_book)))
+    else:
+        bv_items.append(("Estado", "Sin datos de Book Value"))
+
+    return html.Div([
+        dbc.Card(
+            [
+                dbc.CardHeader(html.H5("Detalle de Cálculos de Valoración", className="mb-0 text-white"), className="bg-transparent border-0"),
+                dbc.CardBody(
+                    [
+                        html.H6("1. Valoración por Múltiplos (P/E)", className="text-white fw-bold mb-1"),
+                        html.Div("Fórmula: Precio = EPS × P/E Justo", className="text-muted small mb-2 fst-italic"),
+                        generar_tabla_resumen(pe_items),
+                        
+                        html.Hr(className="my-4", style={"borderColor": "#334155"}),
+                        
+                        html.H6("2. Modelo de Dividendos (Gordon)", className="text-white fw-bold mb-1"),
+                        html.Div("Fórmula: P = D0 × (1+g) / (r-g)", className="text-muted small mb-2 fst-italic"),
+                        generar_tabla_resumen(div_items),
+                        
+                        html.Hr(className="my-4", style={"borderColor": "#334155"}),
+                        
+                        html.H6("3. Valoración por Valor en Libros", className="text-white fw-bold mb-1"),
+                        html.Div("Fórmula: P = Book Value × 1.2", className="text-muted small mb-2 fst-italic"),
+                        generar_tabla_resumen(bv_items),
+                    ]
+                )
+            ],
+            style={"backgroundColor": "#0f172a", "border": "1px solid #1f2937", "borderRadius": "1.25rem"},
+        )
+    ])
 
 
 def construir_graficas_ratio(figuras, ticker):
@@ -534,9 +650,9 @@ app = dash.Dash(
 
 sidebar_links = [
     {"label": "Dashboard", "icon": "🏠", "id": "sidebar-link-dashboard"},
-    {"label": "Análisis Técnico", "icon": "📈", "id": "sidebar-link-analisis-tecnico"},
+    {"label": "Gráficas", "icon": "📈", "id": "sidebar-link-analisis-tecnico"},
     {"label": "Análisis Fundamental", "icon": "🧾", "id": "sidebar-link-analisis-fundamental"},
-    {"label": "Noticias", "icon": "📰", "id": "sidebar-link-noticias"},
+    {"label": "Valoración", "icon": "💲", "id": "sidebar-link-valoracion"},
 ]
 
 news_items = [
@@ -664,37 +780,45 @@ search_card = dbc.Card(
             dbc.Row(
                 [
                     dbc.Col(
-                        dcc.Input(
-                            id="tasa-r",
-                            type="number",
-                            placeholder="Tasa retorno (r)",
-                            value=0.10,
-                            min=0,
-                            step=0.01,
-                            style={
-                                "height": "48px",
-                                "borderRadius": "0.75rem",
-                                "padding": "0 1rem",
-                            },
-                            className="w-100",
-                        ),
+                        [
+                            html.Label("Tasa de Descuento (r)", className="text-white small mb-1", htmlFor="tasa-r"),
+                            dcc.Input(
+                                id="tasa-r",
+                                type="number",
+                                placeholder="Tasa retorno (r)",
+                                value=0.10,
+                                min=0,
+                                step=0.01,
+                                style={
+                                    "height": "48px",
+                                    "borderRadius": "0.75rem",
+                                    "padding": "0 1rem",
+                                },
+                                className="w-100",
+                            ),
+                            html.Small("Retorno mínimo esperado por el inversor.", className="text-muted d-block mt-1"),
+                        ],
                         md=6,
                     ),
                     dbc.Col(
-                        dcc.Input(
-                            id="tasa-g",
-                            type="number",
-                            placeholder="Tasa crecimiento (g)",
-                            value=0.03,
-                            min=0,
-                            step=0.005,
-                            style={
-                                "height": "48px",
-                                "borderRadius": "0.75rem",
-                                "padding": "0 1rem",
-                            },
-                            className="w-100",
-                        ),
+                        [
+                            html.Label("Tasa de Crecimiento (g)", className="text-white small mb-1", htmlFor="tasa-g"),
+                            dcc.Input(
+                                id="tasa-g",
+                                type="number",
+                                placeholder="Tasa crecimiento (g)",
+                                value=0.03,
+                                min=0,
+                                step=0.005,
+                                style={
+                                    "height": "48px",
+                                    "borderRadius": "0.75rem",
+                                    "padding": "0 1rem",
+                                },
+                                className="w-100",
+                            ),
+                            html.Small("Crecimiento estimado a perpetuidad de los dividendos.", className="text-muted d-block mt-1"),
+                        ],
                         md=6,
                     ),
                 ],
@@ -717,6 +841,18 @@ tabs_card = dbc.Card(
         dbc.CardBody(
             dbc.Tabs(
                 [
+                    dbc.Tab(
+                        dcc.Loading(
+                            html.Div(
+                                id="info-text",
+                                className="table-responsive",
+                                style={"minHeight": "220px"},
+                            ),
+                            type="default",
+                        ),
+                        label="Summary",
+                        tab_id="tab-summary",
+                    ),
                     dbc.Tab(
                         [
                             dbc.Tabs(
@@ -776,44 +912,8 @@ tabs_card = dbc.Card(
                         label="Metrics",
                         tab_id="tab-metrics",
                     ),
-                    dbc.Tab(
-                        dcc.Loading(
-                            html.Pre(
-                                id="info-text",
-                                className="text-white",
-                                style={
-                                    "backgroundColor": "#020617",
-                                    "border": "none",
-                                    "whiteSpace": "pre-line",
-                                    "minHeight": "220px",
-                                    "padding": "0.75rem",
-                                },
-                            ),
-                            type="default",
-                        ),
-                        label="Summary",
-                        tab_id="tab-summary",
-                    ),
-                    dbc.Tab(
-                        dcc.Loading(
-                            html.Pre(
-                                id="valoracion-text",
-                                className="text-white",
-                                style={
-                                    "backgroundColor": "#020617",
-                                    "border": "none",
-                                    "whiteSpace": "pre-line",
-                                    "minHeight": "220px",
-                                    "padding": "0.75rem",
-                                },
-                            ),
-                            type="default",
-                        ),
-                        label="Valuation",
-                        tab_id="tab-valuation",
-                    ),
                 ],
-                active_tab="tab-financials",
+                active_tab="tab-summary",
                 className="mt-2",
                 style={"gap": "0.75rem"},
             )
@@ -832,12 +932,11 @@ fundamental_section = html.Div(
 technical_section = html.Div(
     dbc.Card(
         [
-            dbc.CardHeader(html.H5("Análisis técnico", className="mb-0 text-white"), className="bg-transparent border-0"),
             dbc.CardBody(
                 [
                     html.Div(
                         [
-                            html.Span("Temporalidad:", className="text-white me-2"),
+                            # Temporalidades
                             html.Div(
                                 [
                                     dbc.Button(
@@ -856,14 +955,9 @@ technical_section = html.Div(
                                     )
                                     for key in TIMEFRAME_KEYS
                                 ],
-                                className="d-flex flex-wrap",
+                                className="d-flex flex-wrap me-4",
                             ),
-                        ],
-                        className="mb-3",
-                    ),
-                    html.Div(
-                        [
-                            html.Span("Tipo de gráfica:", className="text-white me-2"),
+                            # Tipos de gráfica
                             html.Div(
                                 [
                                     dbc.Button(
@@ -885,7 +979,7 @@ technical_section = html.Div(
                                 className="d-flex flex-wrap",
                             ),
                         ],
-                        className="mb-3",
+                        className="d-flex align-items-center mb-3 flex-wrap",
                     ),
                     dcc.Loading(
                         dcc.Graph(id="technical-chart", config={"displayModeBar": False}),
@@ -904,31 +998,21 @@ technical_section = html.Div(
 timeframe_store = dcc.Store(id="technical-timeframe-store", data="1d")
 chart_type_store = dcc.Store(id="technical-charttype-store", data="candlestick")
 
-news_panel = html.Div(
+valuation_panel = html.Div(
     [
         html.Div(
-            [html.H5("Noticias del mercado", className="text-white mb-0")],
+            [html.H5("Valoración del Activo", className="text-white mb-0")],
             className="mb-3",
         ),
-        html.Div(
-            [
-                html.Div(
-                    [
-                        html.P(item["title"], className="text-white mb-1"),
-                        html.Small(
-                            f"{item['source']} - {item['time']}", className="text-muted"
-                        ),
-                    ],
-                    style={
-                        "borderBottom": "1px solid #1f2937" if idx < len(news_items) - 1 else "none",
-                        "paddingBottom": "0.75rem",
-                        "marginBottom": "0.75rem",
-                    },
-                )
-                for idx, item in enumerate(news_items)
-            ]
+        dcc.Loading(
+            html.Div(
+                id="valoracion-text",
+                className="table-responsive",
+                style={"minHeight": "220px"},
+            ),
+            type="default",
         ),
-        ],
+    ],
     style={
         "backgroundColor": "#0f172a",
         "border": "1px solid #1f2937",
@@ -938,9 +1022,25 @@ news_panel = html.Div(
     },
 )
 
+valuation_detail_section = html.Div(
+    dcc.Loading(
+        html.Div(id="detalle-valoracion-content"),
+        type="default",
+    ),
+    id="valuation-detail-section",
+    style={"display": "none"},
+)
+
 app.layout = html.Div(
     style={"backgroundColor": "#020617", "minHeight": "100vh", "color": "#f8fafc"},
     children=[
+        dcc.Loading(
+            id="full-screen-loader",
+            type="default",
+            fullscreen=True,
+            style={"backgroundColor": "rgba(0,0,0,0.5)"},
+            children=html.Div(id="loading-trigger", style={"display": "none"})
+        ),
         dbc.Container(
             fluid=True,
             className="py-4 px-3",
@@ -954,13 +1054,14 @@ app.layout = html.Div(
                                     dashboard_section,
                                     fundamental_section,
                                     technical_section,
+                                    valuation_detail_section,
                                 ],
                                 className="main-column",
                             ),
                             md=6,
                             id="main-col",
                         ),
-                        dbc.Col(news_panel, md=3, className="ps-3", id="news-col"),
+                        dbc.Col(valuation_panel, md=3, className="ps-3", id="news-col"),
                     ],
                     className="g-4",
                 )
@@ -1000,6 +1101,8 @@ def actualizar_botones_timeframe(*args):
     Output("cashflow-text", "children"),
     Output("valoracion-text", "children"),
     Output("ratio-graphs", "children"),
+    Output("detalle-valoracion-content", "children"),
+    Output("loading-trigger", "children"),
     Input("btn-analizar", "n_clicks"),
     State("ticker-input", "value"),
     State("tasa-r", "value"),
@@ -1019,6 +1122,7 @@ def actualizar_resultados(n_clicks, ticker, tasa_r, tasa_g):
             "",
             "",
             [dbc.Alert(mensaje, color="warning")],
+            "",
         )
 
     tasa_r = float(tasa_r or 0.10)
@@ -1026,11 +1130,12 @@ def actualizar_resultados(n_clicks, ticker, tasa_r, tasa_g):
 
     try:
         datos = obtener_datos(ticker)
-        info_text = construir_texto_informacion(datos)
+        info_text = construir_componente_informacion(datos)
         balance_text = obtener_balance_sheet_component(ticker)
         income_text = obtener_income_statement_component(ticker)
         cashflow_text = obtener_cash_flow_component(ticker)
-        valoracion_text = construir_texto_valoracion(datos, tasa_r, tasa_g)
+        valoracion_text = construir_componente_valoracion(datos, tasa_r, tasa_g)
+        detalle_valoracion_text = construir_detalle_valoracion(datos, tasa_r, tasa_g)
 
         resultado_ratios = graficar_ratios_historicos(ticker, return_data=True)
         if resultado_ratios:
@@ -1051,12 +1156,14 @@ def actualizar_resultados(n_clicks, ticker, tasa_r, tasa_g):
             cashflow_text,
             valoracion_text,
             ratio_graphs,
+            detalle_valoracion_text,
+            "",
         )
 
     except Exception as exc:
         mensaje_error = f"⚠️ Error al analizar el ticker: {exc}"
         alerta = dbc.Alert(mensaje_error, color="danger")
-        return (mensaje_error, "", "", "", "", [alerta])
+        return (mensaje_error, "", "", "", "", [alerta], "", "")
 
 
 def crear_figura_tecnica(hist, chart_type):
@@ -1090,7 +1197,12 @@ def crear_figura_tecnica(hist, chart_type):
     fig.update_layout(
         template="plotly_dark",
         margin=dict(l=20, r=20, t=20, b=20),
-        xaxis=dict(showgrid=False),
+        xaxis=dict(
+            showgrid=False,
+            rangebreaks=[
+                dict(bounds=["sat", "mon"]),  # Ocultar fines de semana (sábado a lunes)
+            ]
+        ),
         yaxis=dict(showgrid=True, gridcolor="#1f2937"),
         font=dict(color="#e2e8f0"),
         height=380,
@@ -1129,13 +1241,15 @@ def actualizar_chart_tecnico(n_clicks, timeframe, chart_type, ticker):
     Output("dashboard-section", "style"),
     Output("fundamental-section", "style"),
     Output("technical-section", "style"),
+    Output("valuation-detail-section", "style"),
     Output("main-col", "style"),
     Output("news-col", "style"),
     Input("sidebar-link-dashboard", "n_clicks"),
     Input("sidebar-link-analisis-fundamental", "n_clicks"),
     Input("sidebar-link-analisis-tecnico", "n_clicks"),
+    Input("sidebar-link-valoracion", "n_clicks"),
 )
-def mostrar_seccion_principal(n_dashboard, n_fundamental, n_tecnico):
+def mostrar_seccion_principal(n_dashboard, n_fundamental, n_tecnico, n_valoracion):
     ctx = callback_context
     default_main_style = {}
     default_news_style = {}
@@ -1143,10 +1257,13 @@ def mostrar_seccion_principal(n_dashboard, n_fundamental, n_tecnico):
     tech_news_style = {"display": "none"}
     fundamental_main_style = {"flex": "0 0 75%", "maxWidth": "75%"}
     fundamental_news_style = {"display": "none"}
+    valuation_main_style = {"flex": "0 0 75%", "maxWidth": "75%"}
+    valuation_news_style = {"display": "none"}
 
     if not ctx.triggered:
         return (
             {"display": "block"},
+            {"display": "none"},
             {"display": "none"},
             {"display": "none"},
             default_main_style,
@@ -1159,6 +1276,7 @@ def mostrar_seccion_principal(n_dashboard, n_fundamental, n_tecnico):
             {"display": "block"},
             {"display": "none"},
             {"display": "none"},
+            {"display": "none"},
             default_main_style,
             default_news_style,
         )
@@ -1166,6 +1284,7 @@ def mostrar_seccion_principal(n_dashboard, n_fundamental, n_tecnico):
         return (
             {"display": "none"},
             {"display": "block"},
+            {"display": "none"},
             {"display": "none"},
             fundamental_main_style,
             fundamental_news_style,
@@ -1175,12 +1294,23 @@ def mostrar_seccion_principal(n_dashboard, n_fundamental, n_tecnico):
             {"display": "none"},
             {"display": "none"},
             {"display": "block"},
+            {"display": "none"},
             tech_main_style,
             tech_news_style,
+        )
+    if trigger_id == "sidebar-link-valoracion":
+        return (
+            {"display": "none"},
+            {"display": "none"},
+            {"display": "none"},
+            {"display": "block"},
+            valuation_main_style,
+            valuation_news_style,
         )
 
     return (
         {"display": "block"},
+        {"display": "none"},
         {"display": "none"},
         {"display": "none"},
         default_main_style,
